@@ -364,20 +364,20 @@ function _listHandler(model, request, Log) {
                       });
 
 
-                      const pages = {
-                        current: query.$page || 1,
-                        prev: 0,
-                        hasPrev: false,
-                        next: 0,
-                        hasNext: false,
-                        total: 0
-                      };
-                      const items = {
-                        limit: query.$limit,
-                        begin: (((query.$page || 1) * query.$limit) - query.$limit) + 1,
-                        end: (query.$page || 1) * query.$limit,
-                        total: count
-                      };
+                const pages = {
+                    current: query.$page || 1,
+                    prev: 0,
+                    hasPrev: false,
+                    next: 0,
+                    hasNext: false,
+                    total: 0
+                };
+                const items = {
+                    limit: query.$limit,
+                    begin: (((query.$page || 1) * query.$limit) - query.$limit) + 1,
+                    end: (query.$page || 1) * query.$limit,
+                    total: count
+                };
 
                       pages.total = Math.ceil(count / query.$limit);
                       pages.next = pages.current + 1;
@@ -466,82 +466,101 @@ function _findHandler(model, _id, request, Log) {
   let query = extend({}, request.query);
   let logError = false;
   try {
-    var flatten = false;
-    if (query.$flatten) {
-      flatten = true;
+    var promise = {};
+    if (model.routeOptions && model.routeOptions.find && model.routeOptions.find.pre) {
+      promise = model.routeOptions.find.pre(_id, query, request, Log);
+    } else {
+      promise = Q.when(query);
     }
-    delete query.$flatten;
-    var mongooseQuery = model.findOne({ '_id': _id });
-    mongooseQuery = QueryHelper.createMongooseQuery(model, query, mongooseQuery, Log).lean();
-    return mongooseQuery.exec()
-        .then(function (result) {
-          if (result) {
-            var promise = {};
-            if (model.routeOptions && model.routeOptions.find && model.routeOptions.find.post) {
-              promise = model.routeOptions.find.post(request, result, Log);
-            } else {
-              promise = Q.when(result);
-            }
 
-            return promise
-                .then(function(data) {
-                  if (model.routeOptions) {
-                    var associations = model.routeOptions.associations;
-                    for (var associationKey in associations) {
-                      var association = associations[associationKey];
-                      if (association.type === "ONE_MANY" && data[associationKey]) {//EXPL: we have to manually populate the return value for virtual (e.g. ONE_MANY) associations
-                        result[associationKey] = data[associationKey];
-                      }
-                      if (association.type === "MANY_MANY" && flatten === true) {//EXPL: remove additional fields and return a flattened array
-                        if (result[associationKey]) {
-                          result[associationKey] = result[associationKey].map(function(object) {
-                            object = object[association.model];
-                            return object;
-                          })
+    return promise
+        .then(function (query){
+          var flatten = false;
+          if (query.$flatten) {
+            flatten = true;
+          }
+          delete query.$flatten;
+          var mongooseQuery = model.findOne({ '_id': _id });
+          mongooseQuery = QueryHelper.createMongooseQuery(model, query, mongooseQuery, Log).lean();
+          return mongooseQuery.exec()
+              .then(function (result) {
+                if (result) {
+                  var promise = {};
+                  if (model.routeOptions && model.routeOptions.find && model.routeOptions.find.post) {
+                    promise = model.routeOptions.find.post(request, result, Log);
+                  } else {
+                    promise = Q.when(result);
+                  }
+
+                  return promise
+                      .then(function(data) {
+                        if (model.routeOptions) {
+                          var associations = model.routeOptions.associations;
+                          for (var associationKey in associations) {
+                            var association = associations[associationKey];
+                            if (association.type === "ONE_MANY" && data[associationKey]) {//EXPL: we have to manually populate the return value for virtual (e.g. ONE_MANY) associations
+                              result[associationKey] = data[associationKey];
+                            }
+                            if (association.type === "MANY_MANY" && flatten === true) {//EXPL: remove additional fields and return a flattened array
+                              if (result[associationKey]) {
+                                result[associationKey] = result[associationKey].map(function(object) {
+                                  object = object[association.model];
+                                  return object;
+                                })
+                              }
+                            }
+                          }
                         }
-                      }
-                    }
-                  }
 
-                  if (config.enableSoftDelete && config.filterDeletedEmbeds) {//EXPL: remove soft deleted documents from populated properties
-                    filterDeletedEmbeds(result, {}, "", 0, Log);
-                  }
+                        if (config.enableSoftDelete && config.filterDeletedEmbeds) {//EXPL: remove soft deleted documents from populated properties
+                          filterDeletedEmbeds(result, {}, "", 0, Log);
+                        }
 
-                  if (result._id) {//TODO: handle this with mongoose/global preware
-                    result._id = result._id.toString();//EXPL: _id must be a string to pass validation
-                  }
+                        if (result._id) {//TODO: handle this with mongoose/global preware
+                          result._id = result._id.toString();//EXPL: _id must be a string to pass validation
+                        }
 
-                  Log.log("Result: %s", JSON.stringify(result));
+                        Log.log("Result: %s", JSON.stringify(result));
 
-                  return result;
-                })
-                .catch(function (error) {
-                  const message = "There was a postprocessing error.";
+                        return result;
+                      })
+                      .catch(function (error) {
+                        const message = "There was a postprocessing error.";
+                        if (!logError) {
+                          Log.error(message);
+                          logError = true;
+                          delete error.type;
+                        }
+                        errorHelper.handleError(error, message, errorHelper.types.BAD_REQUEST, Log);
+                      });
+                }
+                else {
+                  const message = "No resource was found with that id.";
                   if (!logError) {
                     Log.error(message);
                     logError = true;
-                    delete error.type;
                   }
-                  errorHelper.handleError(error, message, errorHelper.types.BAD_REQUEST, Log);
-                });
-          }
-          else {
-            const message = "No resource was found with that id.";
-            if (!logError) {
-              Log.error(message);
-              logError = true;
-            }
-            errorHelper.handleError(message, message, errorHelper.types.NOT_FOUND, Log);
-          }
+                  errorHelper.handleError(message, message, errorHelper.types.NOT_FOUND, Log);
+                }
+              })
+              .catch(function (error) {
+                const message = "There was an error accessing the database.";
+                if (!logError) {
+                  Log.error(message);
+                  logError = true;
+                  delete error.type;
+                }
+                errorHelper.handleError(error, message, errorHelper.types.SERVER_TIMEOUT, Log);
+              });
         })
-        .catch(function (error) {
-          const message = "There was an error accessing the database.";
+        .catch(function(error) {
+          const message = "There was an error preprocessing the request.";
           if (!logError) {
             Log.error(message);
             logError = true;
             delete error.type;
           }
-          errorHelper.handleError(error, message, errorHelper.types.SERVER_TIMEOUT, Log);
+          errorHelper.handleError(error, message, errorHelper.types.BAD_REQUEST, Log);
         });
   }
   catch(error) {
