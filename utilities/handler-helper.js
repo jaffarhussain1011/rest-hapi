@@ -364,20 +364,20 @@ function _listHandler(model, request, Log) {
                       });
 
 
-                const pages = {
-                    current: query.$page || 1,
-                    prev: 0,
-                    hasPrev: false,
-                    next: 0,
-                    hasNext: false,
-                    total: 0
-                };
-                const items = {
-                    limit: query.$limit,
-                    begin: (((query.$page || 1) * query.$limit) - query.$limit) + 1,
-                    end: (query.$page || 1) * query.$limit,
-                    total: count
-                };
+                      const pages = {
+                        current: query.$page || 1,
+                        prev: 0,
+                        hasPrev: false,
+                        next: 0,
+                        hasNext: false,
+                        total: 0
+                      };
+                      const items = {
+                        limit: query.$limit,
+                        begin: (((query.$page || 1) * query.$limit) - query.$limit) + 1,
+                        end: (query.$page || 1) * query.$limit,
+                        total: count
+                      };
 
                       pages.total = Math.ceil(count / query.$limit);
                       pages.next = pages.current + 1;
