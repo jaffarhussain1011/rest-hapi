@@ -5,7 +5,7 @@ var config = {};
 config.server = {};
 config.mongo = {};
 
-//TODO: remove config.server?
+//TODO: remove config.server? test
 
 /**
  * Your app title goes here.
