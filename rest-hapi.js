@@ -86,7 +86,7 @@ function register(server, options, next) {
             //EXPL: setup hapi-swagger plugin
             //region Hapi-Swagger Plugin
             let swaggerOptions = {
-                documentationPath: '/',
+                documentationPath: '/documentation',
                 info: {
                     title: config.appTitle,
                     version: config.version
